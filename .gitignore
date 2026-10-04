@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+
+# PyInstaller çıktıları; .exe'ler GitHub Releases'te yayınlanır
+build/
+dist/*.exe
+*.spec
+
+# Çalışma logları
+*.log
+*.log.1
