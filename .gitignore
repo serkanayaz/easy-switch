@@ -7,6 +7,7 @@ build/
 dist/*.exe
 *.spec
 
-# Çalışma logları
+# Çalışma logları ve cihaz konumu hafızası
 *.log
 *.log.1
+easy-switch.cache.json

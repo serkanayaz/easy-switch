@@ -218,7 +218,7 @@ Common errors:
 | `... bulunamadı; uyuyor ya da bu bilgisayara bağlı değil olabilir` | "... not found; it may be asleep or not connected to this computer." Move the device to wake it up. The end of the message lists the Logitech devices seen on that computer (`bulunanlar:` = "found:"); you can pick one of them with `--device`. |
 | `kanal N geçersiz; cihazda M kanal var` | "Channel N is invalid; the device has M channels." The channel number in the file name or argument is larger than the device's channel count. |
 
-When the device is not found, the error takes a few seconds because the program scans every connected receiver; a normal switch is instant.
+The program remembers which receiver and slot each device was found on in `easy-switch.cache.json` next to it, and looks there first on the next run; a switch then takes about 0.2 seconds. The first run, or a run after the device was moved to another receiver, scans every connected receiver and can take a few seconds, because asking a sleeping device for its name wakes it up. If the remembered location is wrong, the program scans again and updates the file by itself; deleting the file is always safe.
 
 ## Requirements and limitations
 

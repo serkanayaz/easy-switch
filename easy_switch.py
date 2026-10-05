@@ -26,6 +26,7 @@ Program klavye ya da mouse girdisi okumaz; yalnızca Logitech'in HID++ kanalın�
 açar ve kendi gönderdiği komutların cevaplarını okur.
 """
 import datetime
+import json
 import os
 import re
 import sys
@@ -175,8 +176,9 @@ if os.name == "nt":
                         raise OSError(err, "HID okuma/yazma hatası")
                     if hid._k32.WaitForSingleObject(self._event, timeout_ms) == hid._WAIT_TIMEOUT:
                         hid._k32.CancelIoEx(self._h, ctypes.byref(ov))
-                        hid._k32.GetOverlappedResult(self._h, ctypes.byref(ov), ctypes.byref(done), True)
-                        return 0
+                        # iptal sırasında tamamlanmış olabilir; o zaman gelen raporu kaybetme
+                        ok = hid._k32.GetOverlappedResult(self._h, ctypes.byref(ov), ctypes.byref(done), True)
+                        return done.value if ok else 0
                 if not hid._k32.GetOverlappedResult(self._h, ctypes.byref(ov), ctypes.byref(done), True):
                     return 0
                 return done.value
@@ -206,11 +208,16 @@ SW_ID = 0x0A
 FEAT_ROOT = 0x00
 FEAT_DEVICE_NAME = 0x0005
 FEAT_CHANGE_HOST = 0x1814
-REPLY_TIMEOUT = 1.0  # saniye; uyuyan ya da olmayan cihaz için bekleme sınırı
+# saniye; uzun süre kıpırdamayan cihaz ilk komutta uyanır ve bu ~0,75 sn sürer
+REPLY_TIMEOUT = 1.5
 
 FROZEN = getattr(sys, "frozen", False)  # PyInstaller ile derlenmiş .exe
 BASE_DIR = os.path.dirname(os.path.abspath(sys.executable if FROZEN else __file__))
 LOG_PATH = os.path.join(BASE_DIR, "easy-switch.log")
+# Cihazın son bulunduğu alıcı ve yuva. Tarama sırasında başka cihazların adını
+# sormak uyuyan cihazları uyandırıp her biri için saniyelere varan gecikme
+# yaratır; bilinen yere önce bakmak bunu atlar.
+CACHE_PATH = os.path.join(BASE_DIR, "easy-switch.cache.json")
 
 
 class HidppError(Exception):
@@ -218,22 +225,32 @@ class HidppError(Exception):
 
 
 class Device:
-    def __init__(self, handle, index):
-        self.handle = handle
+    def __init__(self, handles, index):
+        # handles[0] uzun rapor kanalı; komutlar oradan yazılır. Windows'ta alıcının
+        # kısa rapor kanalı ayrı bir HID koleksiyonudur ve "bu yuvada cihaz yok"
+        # (HID++ 1.0 hata, 0x8F) cevabı oradan gelir; o da dinlenmezse her boş yuva
+        # REPLY_TIMEOUT kadar bekletir.
+        self.handles = handles
         self.index = index
+
+    @property
+    def handle(self):
+        return self.handles[0]
 
     def request(self, feat_index, func, params=b""):
         fn = (func << 4) | SW_ID
         self.handle.write(bytes([LONG_REPORT, self.index, feat_index, fn]) + params.ljust(16, b"\0"))
         deadline = time.monotonic() + REPLY_TIMEOUT
+        poll_ms = 100 if len(self.handles) == 1 else 20
         while time.monotonic() < deadline:
-            r = bytes(self.handle.read(20, 100))
-            if len(r) < 5 or r[1] != self.index:
-                continue
-            if r[2] == 0x8F or (r[2] == 0xFF and r[3] == feat_index):  # HID++ 1.0 / 2.0 hata
-                raise HidppError(f"cihaz hata döndü: {r[:8].hex()}")
-            if r[2] == feat_index and r[3] == fn:
-                return r[4:]
+            for h in self.handles:
+                r = bytes(h.read(20, poll_ms))
+                if len(r) < 5 or r[1] != self.index:
+                    continue
+                if r[2] == 0x8F or (r[2] == 0xFF and r[3] == feat_index):  # HID++ 1.0 / 2.0 hata
+                    raise HidppError(f"cihaz hata döndü: {r[:8].hex()}")
+                if r[2] == feat_index and r[3] == fn:
+                    return r[4:]
         raise HidppError("cevap gelmedi")
 
     def feature_index(self, feature_id):
@@ -251,41 +268,95 @@ class Device:
         return name.decode("ascii", "replace")
 
 
-def candidates():
-    """HID++ uzun rapor kanalı olan (hid yolu, cihaz indeksleri) çiftleri.
+def _interface_key(path):
+    """Aynı USB arayüzünün koleksiyonlarını eşler: Windows yolundaki &colNN ve
+    koleksiyon sıra numarası atılır. Diğer sistemlerde yol olduğu gibi kalır."""
+    p = path.decode() if isinstance(path, bytes) else path
+    return re.sub(r"&col[0-9a-f]+#(.*)&[0-9a-f]{4}#", r"#\1#", p.lower())
 
-    Alıcılar 0xFF00/0x0002 kanalını açar, arkasındaki cihazlar 1..6 indekslidir.
-    Bluetooth'la doğrudan bağlı cihazlar 0xFF43/0x0202 kanalını açar, indeksleri 0xFF'dir.
+
+def candidates():
+    """HID++ kanalı olan ([uzun yol, kısa yol?], cihaz indeksleri) çiftleri.
+
+    Alıcılar 0xFF00/0x0002 (uzun) ve 0xFF00/0x0001 (kısa) kanallarını açar,
+    arkasındaki cihazlar 1..6 indekslidir. Bluetooth'la doğrudan bağlı cihazlar
+    0xFF43/0x0202 kanalını açar, indeksleri 0xFF'dir.
     """
-    seen = set()
+    receivers, short, seen = {}, {}, set()
     for d in hid.enumerate():
         if d["path"] in seen:
             continue
         seen.add(d["path"])
-        if d["vendor_id"] == LOGI_VID and d["usage_page"] == 0xFF00 and d["usage"] == 0x0002:
-            yield d["path"], list(range(1, 7))
+        if d["vendor_id"] == LOGI_VID and d["usage_page"] == 0xFF00:
+            if d["usage"] == 0x0002:
+                receivers[_interface_key(d["path"])] = d["path"]
+            elif d["usage"] == 0x0001:
+                short[_interface_key(d["path"])] = d["path"]
         elif d["usage_page"] == 0xFF43 and d["usage"] == 0x0202:
-            yield d["path"], [0xFF]
+            yield [d["path"]], [0xFF]
+    for key, path in receivers.items():
+        paths = [path] + ([short[key]] if key in short and short[key] != path else [])
+        yield paths, list(range(1, 7))
+
+
+def _open_all(paths):
+    handles = []
+    for path in paths:
+        h = hid.device()
+        try:
+            h.open_path(path)
+        except OSError:
+            if not handles:  # uzun kanal açılamadıysa bu aday kullanılamaz
+                return None
+            continue
+        handles.append(h)
+    return handles
+
+
+def _load_cache():
+    try:
+        with open(CACHE_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_cache(cache):
+    try:
+        with open(CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(cache, f, indent=1)
+    except OSError:
+        pass
 
 
 def find_device(wanted):
+    cache = _load_cache()
+    hit = cache.get(wanted.lower())  # [arayüz anahtarı, indeks]
+    cands = list(candidates())
+    if hit:  # bilinen alıcı önce, onda da bilinen yuva önce
+        cands.sort(key=lambda c: _interface_key(c[0][0]) != hit[0])
     seen_names = []
-    for path, indexes in candidates():
-        handle = hid.device()
-        try:
-            handle.open_path(path)
-        except OSError:
+    for paths, indexes in cands:
+        key = _interface_key(paths[0])
+        if hit and key == hit[0] and hit[1] in indexes:
+            indexes = [hit[1]] + [i for i in indexes if i != hit[1]]
+        handles = _open_all(paths)
+        if not handles:
             continue
         for index in indexes:
-            dev = Device(handle, index)
+            dev = Device(handles, index)
             try:
                 name = dev.name()
             except HidppError:
                 continue
             if wanted.lower() in name.lower():
+                if hit != [key, index]:
+                    cache[wanted.lower()] = [key, index]
+                    _save_cache(cache)
                 return dev
             seen_names.append(name)
-        handle.close()
+        for h in handles:
+            h.close()
     found = f" (bulunanlar: {', '.join(seen_names)})" if seen_names else ""
     raise HidppError(f"{wanted} bulunamadı; uyuyor ya da bu bilgisayara bağlı değil olabilir{found}")
 

@@ -208,7 +208,7 @@ Konsolsuz çalışırken bir hata olursa ayrıca ekranda bir uyarı penceresi a�
 | `... bulunamadı; uyuyor ya da bu bilgisayara bağlı değil olabilir` | Cihazı hareket ettirip uyandırın. Mesajın sonunda o bilgisayarda görülen Logitech cihazlarının adları listelenir; `--device` ile bunlardan biri seçilebilir. |
 | `kanal N geçersiz; cihazda M kanal var` | Dosya adındaki veya argümandaki kanal numarası cihazın kanal sayısından büyük. |
 
-Cihaz bulunamadığında program takılı tüm alıcıları taradığı için hata birkaç saniye sonra gelir; normal geçiş anında olur.
+Program her cihazın hangi alıcıda ve hangi yuvada bulunduğunu yanındaki `easy-switch.cache.json` dosyasına yazar ve sonraki çalışmada önce oraya bakar; geçiş böylece yaklaşık 0,2 saniye sürer. İlk çalışma ya da cihaz başka bir alıcıya taşındıktan sonraki çalışma takılı tüm alıcıları tarar ve birkaç saniye sürebilir, çünkü uyuyan bir cihaza adını sormak onu uyandırır. Hafızadaki yer yanlışsa program yeniden tarar ve dosyayı kendisi düzeltir; dosyayı silmek her zaman güvenlidir.
 
 ## Gereksinimler ve sınırlar
 
