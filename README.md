@@ -1,12 +1,50 @@
-# easy-switch
+# easy-switch: Switch a Logitech MX Master Between Computers with One Button
 
 **English** | [Türkçe](README.tr.md)
 
-A small Windows tool that switches a Logitech mouse (or keyboard) to another Easy-Switch channel with a single button press.
+[![Platform: Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6)](#requirements-and-limitations)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB)](#a-running-with-python-no-exe-needed)
+[![Latest release](https://img.shields.io/github/v/release/serkanayaz/easy-switch)](https://github.com/serkanayaz/easy-switch/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+**easy-switch** is a small, free and open-source Windows tool that moves a Logitech mouse or keyboard (MX Master 4, MX Master 3S, MX Anywhere, MX Keys and other Easy-Switch devices) to another computer with **a single button press**. Assign it to any mouse button in Logi Options+ and switch between your PC, laptop and work computer without flipping the mouse over to press the Easy-Switch button.
 
 Logitech MX devices can be paired with up to three computers/devices, and you switch between them with the Easy-Switch button on the bottom of the device. Logi Options+ does not let you assign this switch directly to a button; it can only be done through the Actions Ring, in two steps. **easy-switch** fills that gap: assign this program to any button in Options+, and a single press moves the device to another channel.
 
 The program can be used in two ways: as plain Python code on computers that have Python installed (no `.exe` needed), or as a ready-made `.exe` that needs no Python. See [Installation](#installation) for details.
+
+## Contents
+
+- [Features](#features)
+- [Supported devices](#supported-devices)
+- [How it works](#how-it-works)
+- [Channel selection](#channel-selection)
+- [Installation](#installation)
+- [Command line](#command-line)
+- [Log and errors](#log-and-errors)
+- [Requirements and limitations](#requirements-and-limitations)
+- [FAQ](#faq)
+- [License](#license)
+
+## Features
+
+- **One-button Easy-Switch:** switch the mouse or keyboard to computer 1, 2 or 3, or to the next one, with a single press of any button you choose.
+- **Works with Logi Options+:** uses Options+'s own **Open file** / **Open application** actions; no Actions Ring, no extra clicks.
+- **Logi Bolt, Unifying, Lightspeed and Bluetooth:** finds the device on any Logitech receiver or a direct Bluetooth connection.
+- **Fast:** remembers where the device was found, so a switch takes about 0.2 seconds.
+- **No installation, no dependencies:** a single Python file using only the standard library, or a ready-made `.exe`. No driver, no background service.
+- **Safe and auditable:** does not read keyboard or mouse input; the whole program is one readable file.
+- **Same setup on every computer:** no per-computer configuration.
+
+## Supported devices
+
+easy-switch works with Logitech devices that have an Easy-Switch button and support the HID++ 2.0 `CHANGE_HOST` feature. This includes most current Logitech MX and multi-device products, for example:
+
+- **Mice:** MX Master 4, MX Master 3S, MX Master 3, MX Anywhere 3S, MX Anywhere 3, MX Vertical, M720 Triathlon
+- **Keyboards:** MX Keys S, MX Keys, MX Keys Mini, MX Mechanical, K780, K380
+- **Connections:** Logi Bolt receiver, Unifying receiver, Lightspeed receiver, Bluetooth
+
+Tested so far with the **MX Master 4** on a **Logi Bolt** receiver under **Windows 11**. The other devices above use the same protocol but have not been tested; if you try one, please open an issue and report the result.
 
 ## How it works
 
@@ -236,6 +274,40 @@ The program remembers which receiver and slot each device was found on in `easy-
 | `dist/README.txt` | Short user note shipped with the `.exe` files (Turkish) |
 
 The compiled `.exe` files are not stored in the repository; they are published on the [Releases](https://github.com/serkanayaz/easy-switch/releases) page.
+
+## FAQ
+
+### How do I switch my Logitech mouse between computers with one button?
+
+Install easy-switch on each computer, then in Logi Options+ assign the `easy-switch.pyw` (Python) or `easy-switch.exe` file to a mouse button. Pressing that button moves the mouse to the next computer. To jump to a specific computer, use `easy-switch-1`, `easy-switch-2` or `easy-switch-3` instead. Step-by-step instructions are under [Installation](#installation).
+
+### Can Logi Options+ assign Easy-Switch to a mouse button?
+
+Not directly. Options+ only offers Easy-Switch through the Actions Ring, which takes two steps. easy-switch is an ordinary program, so it can be assigned to any button with Options+'s **Open file** or **Open application** action.
+
+### Is this the same as Logitech Flow?
+
+No. Logitech Flow moves the mouse to another computer when the cursor reaches the screen edge and needs Options+ on both computers on the same network. easy-switch switches only when you press the button, and it needs no network connection: it sends the same command as the device's own Easy-Switch button.
+
+### Does it work with the MX Keys keyboard?
+
+Yes, if the keyboard supports Easy-Switch. Select it by name: `easy-switch.exe --device "MX Keys" 2`. Because Options+ cannot pass arguments, with Python you can make a copy of a `.pyw` launcher (for example `keys-switch-2.pyw`) and add the line `sys.argv += ["--device", "MX Keys"]` before `sys.exit(main())`. The mouse and the keyboard switch separately.
+
+### Does it need administrator rights or a driver?
+
+No. It runs as a normal user and uses Windows' built-in HID support. Nothing is installed and nothing runs in the background.
+
+### Is it safe? Is it a keylogger?
+
+It does not read keyboard or mouse input. It only talks to Logitech's HID++ channel and reads the replies to its own commands; see [Security](#security). The whole program is a single file, `easy_switch.py`, that you can read before running.
+
+### How do I switch back to the first computer?
+
+Install easy-switch on the other computer too and assign a button there, or use the Easy-Switch button on the bottom of the device.
+
+### Does it work on macOS or Linux?
+
+The source code supports `hidapi` on macOS and Linux, but these platforms have not been tested. See [macOS and Linux](#macos-and-linux).
 
 ## License
 

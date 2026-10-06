@@ -1,12 +1,50 @@
-# easy-switch
+# easy-switch: Logitech MX Master'ı Tek Tuşla Bilgisayarlar Arasında Geçirin
 
 [English](README.md) | **Türkçe**
 
-Logitech mouse'u (veya klavyeyi) tek bir butonla başka bir Easy-Switch kanalına geçiren küçük bir Windows aracı.
+[![Platform: Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6)](#gereksinimler-ve-sınırlar)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB)](#a-python-ile-çalıştırma-exe-gerekmez)
+[![Son sürüm](https://img.shields.io/github/v/release/serkanayaz/easy-switch)](https://github.com/serkanayaz/easy-switch/releases/latest)
+[![Lisans: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+**easy-switch**, Logitech mouse'u veya klavyeyi (MX Master 4, MX Master 3S, MX Anywhere, MX Keys ve diğer Easy-Switch cihazları) **tek bir butona basarak** başka bir bilgisayara geçiren, ücretsiz ve açık kaynaklı küçük bir Windows aracıdır. Logi Options+'ta herhangi bir mouse butonuna atayın; masaüstü bilgisayar, dizüstü ve iş bilgisayarı arasında mouse'u ters çevirip Easy-Switch butonuna basmadan geçiş yapın.
 
 Logitech MX serisi cihazlar üç bilgisayara/cihaza kadar eşleşebilir ve aralarında cihazın altındaki Easy-Switch butonuyla geçiş yapılır. Logi Options+ bu geçişi bir butona doğrudan atamaya izin vermez; yalnızca Actions Ring üzerinden, iki adımda yapılabilir. **easy-switch** bu boşluğu kapatır: Options+'ta herhangi bir butona bu programı atadığınızda, tek basışta cihaz diğer kanala geçer.
 
 Program iki biçimde kullanılabilir: Python yüklü bilgisayarlarda doğrudan Python koduyla (`.exe` gerekmez) ya da Python gerektirmeyen hazır bir `.exe` ile. Ayrıntılar [Kurulum](#kurulum) bölümünde.
+
+## İçindekiler
+
+- [Özellikler](#özellikler)
+- [Desteklenen cihazlar](#desteklenen-cihazlar)
+- [Nasıl çalışır](#nasıl-çalışır)
+- [Kanal seçimi](#kanal-seçimi)
+- [Kurulum](#kurulum)
+- [Komut satırı](#komut-satırı)
+- [Log ve hatalar](#log-ve-hatalar)
+- [Gereksinimler ve sınırlar](#gereksinimler-ve-sınırlar)
+- [Sık sorulan sorular](#sık-sorulan-sorular)
+- [Lisans](#lisans)
+
+## Özellikler
+
+- **Tek tuşla Easy-Switch:** mouse'u veya klavyeyi seçtiğiniz herhangi bir butonla 1., 2. ya da 3. bilgisayara veya sıradakine geçirir.
+- **Logi Options+ ile çalışır:** Options+'ın kendi **Open file** / **Open application** eylemlerini kullanır; Actions Ring yok, fazladan tıklama yok.
+- **Logi Bolt, Unifying, Lightspeed ve Bluetooth:** cihazı herhangi bir Logitech alıcısında ya da doğrudan Bluetooth bağlantısında bulur.
+- **Hızlı:** cihazın nerede bulunduğunu hatırlar; geçiş yaklaşık 0,2 saniye sürer.
+- **Kurulum ve bağımlılık yok:** yalnızca standart kütüphaneyi kullanan tek bir Python dosyası ya da hazır bir `.exe`. Sürücü yok, arka planda çalışan servis yok.
+- **Güvenli ve denetlenebilir:** klavye ya da mouse girdisi okumaz; programın tamamı tek bir okunabilir dosyadır.
+- **Her bilgisayarda aynı kurulum:** bilgisayara özel ayar gerekmez.
+
+## Desteklenen cihazlar
+
+easy-switch, Easy-Switch butonu olan ve HID++ 2.0 `CHANGE_HOST` özelliğini destekleyen Logitech cihazlarıyla çalışır. Güncel Logitech MX ve çoklu cihaz ürünlerinin çoğu bu gruptadır, örneğin:
+
+- **Mouse'lar:** MX Master 4, MX Master 3S, MX Master 3, MX Anywhere 3S, MX Anywhere 3, MX Vertical, M720 Triathlon
+- **Klavyeler:** MX Keys S, MX Keys, MX Keys Mini, MX Mechanical, K780, K380
+- **Bağlantılar:** Logi Bolt alıcısı, Unifying alıcısı, Lightspeed alıcısı, Bluetooth
+
+Şimdiye kadar **Windows 11** altında **Logi Bolt** alıcısıyla bağlı **MX Master 4** ile denendi. Yukarıdaki diğer cihazlar aynı protokolü kullanır ancak denenmemiştir; birini denerseniz lütfen bir issue açıp sonucu bildirin.
 
 ## Nasıl çalışır
 
@@ -226,6 +264,40 @@ Program her cihazın hangi alıcıda ve hangi yuvada bulunduğunu yanındaki `ea
 | `dist/README.txt` | `.exe`'lerle birlikte dağıtılan kısa kullanıcı notu |
 
 Derlenmiş `.exe` dosyaları depoda tutulmaz; [Releases](https://github.com/serkanayaz/easy-switch/releases) sayfasında yayınlanır.
+
+## Sık sorulan sorular
+
+### Logitech mouse'u tek tuşla bilgisayarlar arasında nasıl geçiririm?
+
+easy-switch'i her bilgisayara kurun, ardından Logi Options+'ta bir mouse butonuna `easy-switch.pyw` (Python) ya da `easy-switch.exe` dosyasını atayın. O butona basınca mouse sıradaki bilgisayara geçer. Belirli bir bilgisayara geçmek için bunların yerine `easy-switch-1`, `easy-switch-2` ya da `easy-switch-3` kullanın. Adım adım anlatım [Kurulum](#kurulum) bölümünde.
+
+### Logi Options+ Easy-Switch'i bir mouse butonuna atayabilir mi?
+
+Doğrudan atayamaz. Options+ Easy-Switch'i yalnızca Actions Ring üzerinden, iki adımda sunar. easy-switch sıradan bir program olduğu için Options+'ın **Open file** ya da **Open application** eylemiyle herhangi bir butona atanabilir.
+
+### Bu Logitech Flow ile aynı şey mi?
+
+Hayır. Logitech Flow, imleç ekranın kenarına gelince mouse'u diğer bilgisayara geçirir ve iki bilgisayarda da aynı ağda Options+ gerektirir. easy-switch yalnızca butona bastığınızda geçer ve ağ bağlantısı gerektirmez: cihazın kendi Easy-Switch butonunun gönderdiği komutun aynısını gönderir.
+
+### MX Keys klavyeyle çalışır mı?
+
+Klavye Easy-Switch destekliyorsa evet. Klavyeyi adıyla seçin: `easy-switch.exe --device "MX Keys" 2`. Options+ argüman geçiremediği için Python ile bir `.pyw` başlatıcısının kopyasını alıp (örneğin `keys-switch-2.pyw`) `sys.exit(main())` satırından önce `sys.argv += ["--device", "MX Keys"]` satırını ekleyebilirsiniz. Mouse ve klavye ayrı ayrı geçer.
+
+### Yönetici yetkisi ya da sürücü gerekir mi?
+
+Hayır. Normal kullanıcı olarak çalışır ve Windows'un yerleşik HID desteğini kullanır. Hiçbir şey kurulmaz, arka planda hiçbir şey çalışmaz.
+
+### Güvenli mi? Keylogger mı?
+
+Klavye ya da mouse girdisi okumaz. Yalnızca Logitech'in HID++ kanalıyla konuşur ve kendi komutlarının cevaplarını okur; bkz. [Güvenlik](#güvenlik). Programın tamamı, çalıştırmadan önce okuyabileceğiniz tek bir dosyadır: `easy_switch.py`.
+
+### İlk bilgisayara nasıl geri dönerim?
+
+Diğer bilgisayara da easy-switch'i kurup orada bir buton atayın ya da cihazın altındaki Easy-Switch butonunu kullanın.
+
+### macOS veya Linux'ta çalışır mı?
+
+Kaynak kod macOS ve Linux'ta `hidapi` paketini destekler, ancak bu platformlar denenmemiştir. Bkz. [macOS ve Linux](#macos-ve-linux).
 
 ## Lisans
 
