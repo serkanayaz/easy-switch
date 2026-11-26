@@ -239,7 +239,7 @@ easy-switch.exe --dry-run
 
 ## Log and errors
 
-Every run writes one line to `easy-switch.log` in the program's folder. When the file exceeds 256 KB it is kept as `easy-switch.log.1`.
+Every run writes one line to `easy-switch.log` in the program's folder. When the file exceeds 256 KB it is kept as `easy-switch.log.1`. The end of the line shows where the timing went, for example `[cache, startup 66 ms, device 20 ms]` (the log text itself is in Turkish: `önbellek` / `tarama`, `açılış`, `cihaz`): whether the device was opened from the cache or found by a scan, the time from process creation until the program started running (Windows only), and the time spent talking to the device. If the device has been idle for a while, its first reply can take a few hundred milliseconds because the wireless link wakes up.
 
 If an error occurs while running without a console, a warning window is also shown. The program's messages are currently in Turkish:
 
@@ -256,7 +256,7 @@ Common errors:
 | `... bulunamadı; uyuyor ya da bu bilgisayara bağlı değil olabilir` | "... not found; it may be asleep or not connected to this computer." Move the device to wake it up. The end of the message lists the Logitech devices seen on that computer (`bulunanlar:` = "found:"); you can pick one of them with `--device`. |
 | `kanal N geçersiz; cihazda M kanal var` | "Channel N is invalid; the device has M channels." The channel number in the file name or argument is larger than the device's channel count. |
 
-The program remembers which receiver and slot each device was found on in `easy-switch.cache.json` next to it, and looks there first on the next run; a switch then takes about 0.2 seconds. The first run, or a run after the device was moved to another receiver, scans every connected receiver and can take a few seconds, because asking a sleeping device for its name wakes it up. If the remembered location is wrong, the program scans again and updates the file by itself; deleting the file is always safe.
+The program remembers each device's HID path, slot and the number of its channel-switch command in `easy-switch.cache.json` next to it. On the next run it opens that path directly without scanning; a Bluetooth device is not even asked for its name (the path already contains its product ID), while a device on a receiver is still asked, because after re-pairing a different device could sit in the same slot. Talking to the device then takes about 20 ms. The first run, or a run after the device was moved, scans every connected receiver and can take a few seconds, because asking a sleeping device for its name wakes it up. If the remembered path does not open or the device answers with an error, the program scans again and updates the file by itself; deleting the file is always safe.
 
 ## Requirements and limitations
 

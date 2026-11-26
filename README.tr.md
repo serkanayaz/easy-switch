@@ -237,7 +237,7 @@ easy-switch.exe --dry-run
 
 ## Log ve hatalar
 
-Her çalışma, programın bulunduğu klasördeki `easy-switch.log` dosyasına bir satır yazar. Dosya 256 KB'ı geçince `easy-switch.log.1` olarak saklanır.
+Her çalışma, programın bulunduğu klasördeki `easy-switch.log` dosyasına bir satır yazar. Dosya 256 KB'ı geçince `easy-switch.log.1` olarak saklanır. Satırın sonu zamanın nereye gittiğini gösterir, örneğin `[önbellek, açılış 66 ms, cihaz 20 ms]`: cihazın önbellekten mi yoksa taramayla mı bulunduğu, sürecin oluşturulmasından programın çalışmaya başlamasına kadar geçen süre (yalnız Windows) ve cihazla konuşmaya harcanan süre. Cihaz bir süre kullanılmadıysa kablosuz bağlantı uyandığı için ilk cevap birkaç yüz milisaniye sürebilir.
 
 Konsolsuz çalışırken bir hata olursa ayrıca ekranda bir uyarı penceresi açılır. Sık görülen hatalar:
 
@@ -246,7 +246,7 @@ Konsolsuz çalışırken bir hata olursa ayrıca ekranda bir uyarı penceresi a�
 | `... bulunamadı; uyuyor ya da bu bilgisayara bağlı değil olabilir` | Cihazı hareket ettirip uyandırın. Mesajın sonunda o bilgisayarda görülen Logitech cihazlarının adları listelenir; `--device` ile bunlardan biri seçilebilir. |
 | `kanal N geçersiz; cihazda M kanal var` | Dosya adındaki veya argümandaki kanal numarası cihazın kanal sayısından büyük. |
 
-Program her cihazın hangi alıcıda ve hangi yuvada bulunduğunu yanındaki `easy-switch.cache.json` dosyasına yazar ve sonraki çalışmada önce oraya bakar; geçiş böylece yaklaşık 0,2 saniye sürer. İlk çalışma ya da cihaz başka bir alıcıya taşındıktan sonraki çalışma takılı tüm alıcıları tarar ve birkaç saniye sürebilir, çünkü uyuyan bir cihaza adını sormak onu uyandırır. Hafızadaki yer yanlışsa program yeniden tarar ve dosyayı kendisi düzeltir; dosyayı silmek her zaman güvenlidir.
+Program her cihazın HID yolunu, yuvasını ve kanal değiştirme komutunun numarasını yanındaki `easy-switch.cache.json` dosyasına yazar. Sonraki çalışmada taramadan doğrudan o yolu açar. Bluetooth'la bağlı cihaza adı bile sorulmaz, çünkü yolda cihazın ürün kodu vardır. Alıcıdaki cihaza ise yine sorulur, çünkü yeniden eşleştirmeden sonra aynı yuvada başka bir cihaz olabilir. Cihazla konuşma böylece yaklaşık 20 ms sürer. İlk çalışma ya da cihaz başka yere taşındıktan sonraki çalışma takılı tüm alıcıları tarar ve birkaç saniye sürebilir, çünkü uyuyan bir cihaza adını sormak onu uyandırır. Hafızadaki yol açılmazsa ya da cihaz hata dönerse program yeniden tarar ve dosyayı kendisi düzeltir; dosyayı silmek her zaman güvenlidir.
 
 ## Gereksinimler ve sınırlar
 

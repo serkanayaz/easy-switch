@@ -214,10 +214,12 @@ REPLY_TIMEOUT = 1.5
 FROZEN = getattr(sys, "frozen", False)  # PyInstaller ile derlenmiş .exe
 BASE_DIR = os.path.dirname(os.path.abspath(sys.executable if FROZEN else __file__))
 LOG_PATH = os.path.join(BASE_DIR, "easy-switch.log")
-# Cihazın son bulunduğu alıcı ve yuva. Tarama sırasında başka cihazların adını
-# sormak uyuyan cihazları uyandırıp her biri için saniyelere varan gecikme
-# yaratır; bilinen yere önce bakmak bunu atlar.
+# Cihazın son bulunduğu HID yolları, yuvası ve CHANGE_HOST özellik indeksi.
+# Bilinen yol taramasız açılır; Bluetooth'ta ad da sorulmaz (yolda ürün kodu
+# var). Tarama sırasında başka cihazların adını sormak uyuyan cihazları
+# uyandırıp her biri için saniyelere varan gecikme yaratır.
 CACHE_PATH = os.path.join(BASE_DIR, "easy-switch.cache.json")
+BT_INDEX = 0xFF
 
 
 class HidppError(Exception):
@@ -225,13 +227,18 @@ class HidppError(Exception):
 
 
 class Device:
-    def __init__(self, handles, index):
+    def __init__(self, handles, index, paths):
         # handles[0] uzun rapor kanalı; komutlar oradan yazılır. Windows'ta alıcının
         # kısa rapor kanalı ayrı bir HID koleksiyonudur ve "bu yuvada cihaz yok"
         # (HID++ 1.0 hata, 0x8F) cevabı oradan gelir; o da dinlenmezse her boş yuva
         # REPLY_TIMEOUT kadar bekletir.
         self.handles = handles
         self.index = index
+        self.paths = [p.decode() if isinstance(p, bytes) else p for p in paths]
+
+    def close(self):
+        for h in self.handles:
+            h.close()
 
     @property
     def handle(self):
@@ -293,7 +300,7 @@ def candidates():
             elif d["usage"] == 0x0001:
                 short[_interface_key(d["path"])] = d["path"]
         elif d["usage_page"] == 0xFF43 and d["usage"] == 0x0202:
-            yield [d["path"]], [0xFF]
+            yield [d["path"]], [BT_INDEX]
     for key, path in receivers.items():
         paths = [path] + ([short[key]] if key in short and short[key] != path else [])
         yield paths, list(range(1, 7))
@@ -329,36 +336,80 @@ def _save_cache(cache):
         pass
 
 
-def find_device(wanted):
-    cache = _load_cache()
-    hit = cache.get(wanted.lower())  # [arayüz anahtarı, indeks]
+def _host_info(dev, fi):
+    """getHostInfo -> (kanal sayısı, şu anki kanal 1 tabanlı)."""
+    info = dev.request(fi, 0)
+    return info[0], info[1] + 1
+
+
+def _from_cache(wanted, hit):
+    """Önbellekteki yoldan taramasız açar; tutmazsa None (çağıran taramaya düşer).
+
+    Alıcıda yuvalar yeniden eşleştirmeyle el değiştirebileceği için ad yine
+    sorulur; Bluetooth yolu cihazın ürün kodunu taşıdığından ad atlanır.
+    Gelen getHostInfo cevabı önbellekteki özellik indeksini de doğrular.
+    """
+    try:
+        paths, index, fi = list(hit["paths"]), int(hit["index"]), int(hit["change_host"])
+    except (KeyError, TypeError, ValueError):
+        return None  # eski biçim ya da bozuk kayıt
+    handles = _open_all(paths)
+    if not handles:
+        return None
+    dev = Device(handles, index, paths)
+    try:
+        if index != BT_INDEX and wanted.lower() not in dev.name().lower():
+            raise HidppError("yuvada başka cihaz var")
+        return dev, fi, _host_info(dev, fi)
+    except (HidppError, OSError):
+        dev.close()
+        return None
+
+
+def _scan(wanted, hit):
     cands = list(candidates())
-    if hit:  # bilinen alıcı önce, onda da bilinen yuva önce
-        cands.sort(key=lambda c: _interface_key(c[0][0]) != hit[0])
+    hit_key = _interface_key(hit["paths"][0]) if isinstance(hit, dict) and hit.get("paths") else None
+    hit_index = hit.get("index") if isinstance(hit, dict) else None
+    if hit_key:  # bilinen alıcı önce, onda da bilinen yuva önce
+        cands.sort(key=lambda c: _interface_key(c[0][0]) != hit_key)
     seen_names = []
     for paths, indexes in cands:
-        key = _interface_key(paths[0])
-        if hit and key == hit[0] and hit[1] in indexes:
-            indexes = [hit[1]] + [i for i in indexes if i != hit[1]]
+        if _interface_key(paths[0]) == hit_key and hit_index in indexes:
+            indexes = [hit_index] + [i for i in indexes if i != hit_index]
         handles = _open_all(paths)
         if not handles:
             continue
         for index in indexes:
-            dev = Device(handles, index)
+            dev = Device(handles, index, paths)
             try:
                 name = dev.name()
             except HidppError:
                 continue
             if wanted.lower() in name.lower():
-                if hit != [key, index]:
-                    cache[wanted.lower()] = [key, index]
-                    _save_cache(cache)
                 return dev
             seen_names.append(name)
         for h in handles:
             h.close()
     found = f" (bulunanlar: {', '.join(seen_names)})" if seen_names else ""
     raise HidppError(f"{wanted} bulunamadı; uyuyor ya da bu bilgisayara bağlı değil olabilir{found}")
+
+
+def open_device(wanted):
+    """-> (cihaz, CHANGE_HOST indeksi, (kanal sayısı, şu anki kanal), "önbellek"|"tarama")"""
+    cache = _load_cache()
+    hit = cache.get(wanted.lower())
+    if isinstance(hit, dict):
+        got = _from_cache(wanted, hit)
+        if got:
+            return (*got, "önbellek")
+    dev = _scan(wanted, hit)
+    fi = dev.feature_index(FEAT_CHANGE_HOST)
+    host = _host_info(dev, fi)
+    entry = {"paths": dev.paths, "index": dev.index, "change_host": fi}
+    if hit != entry:
+        cache[wanted.lower()] = entry
+        _save_cache(cache)
+    return dev, fi, host, "tarama"
 
 
 def parse_args(argv):
@@ -380,10 +431,31 @@ def parse_args(argv):
     return target, device, dry_run
 
 
+def _ms_since_process_start():
+    """Sürecin oluşturulmasından bu yana geçen ms (yorumlayıcının açılışı dahil);
+    Windows dışında ya da okunamazsa None."""
+    if os.name != "nt":
+        return None
+    try:
+        k32 = ctypes.windll.kernel32
+        created, now, dummy = ctypes.c_ulonglong(), ctypes.c_ulonglong(), ctypes.c_ulonglong()
+        if not k32.GetProcessTimes(ctypes.c_void_p(-1), ctypes.byref(created), ctypes.byref(dummy),
+                                   ctypes.byref(dummy), ctypes.byref(dummy)):
+            return None
+        k32.GetSystemTimePreciseAsFileTime(ctypes.byref(now))
+        return (now.value - created.value) // 10_000  # 100 ns birim
+    except (AttributeError, OSError):
+        return None
+
+
 def log(msg):
-    line = f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S} {msg}"
+    now = datetime.datetime.now()
+    line = f"{now:%Y-%m-%d %H:%M:%S}.{now.microsecond // 1000:03d} {msg}"
     if sys.stdout:  # pythonw / pencereli .exe'de stdout yok
-        print(line)
+        try:
+            print(line)
+        except UnicodeEncodeError:  # Türkçe karakter basamayan konsol (cp1252)
+            print(line.encode("ascii", "replace").decode())
     try:
         if os.path.exists(LOG_PATH) and os.path.getsize(LOG_PATH) > 256 * 1024:
             os.replace(LOG_PATH, LOG_PATH + ".1")
@@ -403,28 +475,35 @@ def alert(msg):
 
 def main(argv=None):
     argv = argv or sys.argv
+    start_ms = _ms_since_process_start()  # buraya kadarki süre: süreç açılışı + Python + import
+    t0 = time.perf_counter()
+
+    def timing(source=None):
+        parts = [source] if source else []
+        if start_ms is not None:
+            parts.append(f"açılış {start_ms} ms")
+        parts.append(f"cihaz {round((time.perf_counter() - t0) * 1000)} ms")
+        return f" [{', '.join(parts)}]"
+
     try:
         target, wanted, dry_run = parse_args(argv)
-        dev = find_device(wanted)
-        fi = dev.feature_index(FEAT_CHANGE_HOST)
-        info = dev.request(fi, 0)  # getHostInfo -> [kanal sayısı, şu anki kanal (0 tabanlı)]
-        count, current = info[0], info[1] + 1
+        dev, fi, (count, current), source = open_device(wanted)
         if target is None:
             target = current % count + 1
         if not 1 <= target <= count:
             raise HidppError(f"kanal {target} geçersiz; cihazda {count} kanal var")
         if target == current:
-            log(f"zaten {current}. kanalda, bir şey yapılmadı")
+            log(f"zaten {current}. kanalda, bir şey yapılmadı{timing(source)}")
             return 0
         if dry_run:
-            log(f"[dry-run] {current}. kanaldan {target}. kanala geçilecekti")
+            log(f"[dry-run] {current}. kanaldan {target}. kanala geçilecekti{timing(source)}")
             return 0
         # setCurrentHost: cevap beklenmez, cihaz hemen bağlantıyı bırakır
         dev.handle.write(bytes([LONG_REPORT, dev.index, fi, (1 << 4) | SW_ID, target - 1]).ljust(20, b"\0"))
-        log(f"{current}. kanaldan {target}. kanala geçildi")
+        log(f"{current}. kanaldan {target}. kanala geçildi{timing(source)}")
         return 0
     except Exception as e:
-        log(f"HATA: {e}")
+        log(f"HATA: {e}{timing()}")
         alert(str(e))
         return 1
 
