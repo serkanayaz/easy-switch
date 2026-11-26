@@ -244,10 +244,10 @@ class Device:
     def handle(self):
         return self.handles[0]
 
-    def request(self, feat_index, func, params=b""):
+    def request(self, feat_index, func, params=b"", timeout=REPLY_TIMEOUT):
         fn = (func << 4) | SW_ID
         self.handle.write(bytes([LONG_REPORT, self.index, feat_index, fn]) + params.ljust(16, b"\0"))
-        deadline = time.monotonic() + REPLY_TIMEOUT
+        deadline = time.monotonic() + timeout
         poll_ms = 100 if len(self.handles) == 1 else 20
         while time.monotonic() < deadline:
             for h in self.handles:
@@ -336,10 +336,86 @@ def _save_cache(cache):
         pass
 
 
-def _host_info(dev, fi):
+def _host_info(dev, fi, timeout=REPLY_TIMEOUT):
     """getHostInfo -> (kanal sayısı, şu anki kanal 1 tabanlı)."""
-    info = dev.request(fi, 0)
+    info = dev.request(fi, 0, timeout=timeout)
     return info[0], info[1] + 1
+
+
+# Geçiş komutundan sonra cihaz ~140 ms içinde bağlantıyı bırakır. Ancak komutun
+# hemen ardından cihaza başka bir HID++ mesajı ulaşırsa (bizim sorgumuz ya da
+# butona basılınca Options+'ın gönderdikleri) cihaz geçişi sessizce iptal eder:
+# komuttan sonra sürekli sorguda 8 denemenin 6'sı, 0,5 sn sessizlikle 10/10
+# uygulandı (26.11.2026 ölçümü). Bu yüzden komuttan sonra SWITCH_SILENCE kadar
+# hiçbir şey gönderilmez, sonra tek bir sorgu yapılır:
+#   - cihaz hâlâ eski kanaldaysa komut yok sayılmıştır, yeniden gönderilir;
+#   - cevap yoksa ayrılmıştır; ayrılmak geçişin tuttuğunu kanıtlamaz (hedef
+#     bilgisayara bağlanamayan cihaz eskisine geri dönebilir), bu yüzden
+#     RETURN_WINDOW boyunca geri dönüp dönmediğine bakılır. Bu aşamada sorgu
+#     zararsızdır, komut zaten uygulanmıştır.
+# İzleme geçişten sonra yapıldığı için başarılı geçişi geciktirmez.
+SWITCH_ATTEMPTS = 3
+SWITCH_SILENCE = 0.5
+CHECK_TIMEOUT = 0.3
+# Elle geri dönüş (öbür bilgisayardan basmak) birkaç saniye sürer; onu geri
+# sekme sanmamak için pencere kısa tutulur.
+RETURN_WINDOW = 3.0
+
+
+def _watch(dev, fi, current, t0):
+    """Komuttan sonra cihazı izler -> (sonuç, ayrıntı).
+
+    Sonuç: "geçti", "yok saydı" (hiç ayrılmadı) ya da "geri döndü".
+    """
+    ms = lambda: round((time.monotonic() - t0) * 1000)  # noqa: E731
+    time.sleep(SWITCH_SILENCE)
+    try:
+        _, now = _host_info(dev, fi, CHECK_TIMEOUT)
+        if now != current:
+            return "geçti", f"cihaz {now}. kanalı bildirdi"
+        return "yok saydı", f"{ms()} ms sonra hâlâ {now}. kanalda"
+    except (OSError, HidppError):
+        pass
+    gone_at = ms()
+    while time.monotonic() - t0 < RETURN_WINDOW:
+        # Windows bağlantı kopunca tanıtıcıyı geçersiz kılar; cihaz dönerse
+        # aynı yoldan yeniden açılabilir
+        dev.close()
+        handles = _open_all(dev.paths)
+        if not handles:
+            time.sleep(0.25)
+            continue
+        dev.handles = handles
+        try:
+            _, now = _host_info(dev, fi, CHECK_TIMEOUT)
+        except (OSError, HidppError):
+            time.sleep(0.25)
+            continue
+        if now == current:
+            return "geri döndü", f"{gone_at} ms'deki kontrolde ayrılmıştı, {ms()} ms'de {now}. kanala geri döndü"
+        return "geçti", f"cihaz {now}. kanalı bildirdi"
+    return "geçti", f"ayrıldı, {round(RETURN_WINDOW * 1000)} ms içinde dönmedi"
+
+
+def switch_host(dev, fi, current, target):
+    """setCurrentHost gönderir ve tuttuğunu doğrular; tutmazsa yeniden gönderir.
+
+    -> (deneme sayısı, tuttu mu, son denemenin ayrıntısı)
+    """
+    detail = ""
+    for attempt in range(1, SWITCH_ATTEMPTS + 1):
+        t0 = time.monotonic()
+        try:
+            n = dev.handle.write(bytes([LONG_REPORT, dev.index, fi, (1 << 4) | SW_ID, target - 1]).ljust(20, b"\0"))
+        except OSError as e:
+            n = f"hata {e}"
+        if not n or isinstance(n, str):
+            log(f"{attempt}. denemede komut yazılamadı ({n})")
+        result, detail = _watch(dev, fi, current, t0)
+        if result == "geçti":
+            return attempt, True, detail
+        log(f"{attempt}. deneme tutmadı, cihaz {result}: {detail}")
+    return SWITCH_ATTEMPTS, False, detail
 
 
 def _from_cache(wanted, hit):
@@ -498,9 +574,14 @@ def main(argv=None):
         if dry_run:
             log(f"[dry-run] {current}. kanaldan {target}. kanala geçilecekti{timing(source)}")
             return 0
-        # setCurrentHost: cevap beklenmez, cihaz hemen bağlantıyı bırakır
-        dev.handle.write(bytes([LONG_REPORT, dev.index, fi, (1 << 4) | SW_ID, target - 1]).ljust(20, b"\0"))
-        log(f"{current}. kanaldan {target}. kanala geçildi{timing(source)}")
+        sent = timing(source)  # ilk komutun gittiği ana kadarki süre
+        attempts, ok, detail = switch_host(dev, fi, current, target)
+        if not ok:
+            msg = f"{current}. kanaldan {target}. kanala geçilemedi; {attempts} deneme de tutmadı"
+            log(f"HATA: {msg}{sent}")
+            alert(msg)
+            return 1
+        log(f"{current}. kanaldan {target}. kanala geçildi ({attempts}. deneme; {detail}){sent}")
         return 0
     except Exception as e:
         log(f"HATA: {e}{timing()}")

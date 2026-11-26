@@ -241,6 +241,13 @@ easy-switch.exe --dry-run
 
 Every run writes one line to `easy-switch.log` in the program's folder. When the file exceeds 256 KB it is kept as `easy-switch.log.1`. The end of the line shows where the timing went, for example `[cache, startup 66 ms, device 20 ms]` (the log text itself is in Turkish: `önbellek` / `tarama`, `açılış`, `cihaz`): whether the device was opened from the cache or found by a scan, the time from process creation until the program started running (Windows only), and the time spent talking to the device. If the device has been idle for a while, its first reply can take a few hundred milliseconds because the wireless link wakes up.
 
+After the switch command the program sends nothing for 0.5 seconds, because if another message reaches the device right after the command, the device silently cancels the switch. It then asks the device which channel it is on:
+
+- If the device still reports the old channel, the command was ignored and is sent again.
+- If there is no reply, the device has left. For 3 seconds the program checks whether it comes back on the old channel. A device that cannot connect to the target computer comes back; the command is then sent again.
+
+At most three attempts are made. A suffix such as `(2. deneme; ayrıldı, 3000 ms içinde dönmedi)` ("attempt 2; left, did not return within 3000 ms") shows this. If all three attempts fail, a warning appears on screen. The check runs after the switch, so it does not delay a successful one.
+
 If an error occurs while running without a console, a warning window is also shown. The program's messages are currently in Turkish:
 
 | Message | Meaning |

@@ -239,6 +239,13 @@ easy-switch.exe --dry-run
 
 Her çalışma, programın bulunduğu klasördeki `easy-switch.log` dosyasına bir satır yazar. Dosya 256 KB'ı geçince `easy-switch.log.1` olarak saklanır. Satırın sonu zamanın nereye gittiğini gösterir, örneğin `[önbellek, açılış 66 ms, cihaz 20 ms]`: cihazın önbellekten mi yoksa taramayla mı bulunduğu, sürecin oluşturulmasından programın çalışmaya başlamasına kadar geçen süre (yalnız Windows) ve cihazla konuşmaya harcanan süre. Cihaz bir süre kullanılmadıysa kablosuz bağlantı uyandığı için ilk cevap birkaç yüz milisaniye sürebilir.
 
+Program geçiş komutundan sonra 0,5 saniye hiçbir şey göndermez, çünkü komutun hemen ardından cihaza başka bir mesaj ulaşırsa cihaz geçişi sessizce iptal eder. Ardından cihaza hangi kanalda olduğunu sorar:
+
+- Cihaz hâlâ eski kanaldaysa komut yok sayılmıştır ve yeniden gönderilir.
+- Cevap gelmiyorsa cihaz ayrılmıştır. Program 3 saniye boyunca cihazın eski kanala geri dönüp dönmediğine bakar. Hedef bilgisayara bağlanamayan cihaz geri döner; o zaman komut yeniden gönderilir.
+
+Toplam en fazla üç deneme yapılır. Satırdaki `(2. deneme; ayrıldı, 3000 ms içinde dönmedi)` gibi bir ek bunu gösterir. Üç deneme de tutmazsa ekranda uyarı çıkar. Bu kontrol geçişten sonra yapıldığı için başarılı geçişi geciktirmez.
+
 Konsolsuz çalışırken bir hata olursa ayrıca ekranda bir uyarı penceresi açılır. Sık görülen hatalar:
 
 | Hata | Çözüm |
